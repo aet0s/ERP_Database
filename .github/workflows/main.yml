@@ -1,0 +1,55 @@
+name: ERP Database Repository Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy Database Repository to AWS
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create deployment package
+        run: |
+          tar \
+            --exclude='.git' \
+            -czf /tmp/db-release.tar.gz .
+
+          echo "Deployment package created:"
+          ls -lh /tmp/db-release.tar.gz
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+
+          echo "${{ secrets.AWS_SSH_KEY }}" > ~/.ssh/erp_deploy_key
+
+          chmod 600 ~/.ssh/erp_deploy_key
+
+          ssh-keyscan -H "${{ secrets.AWS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload release
+        run: |
+          scp \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -i ~/.ssh/erp_deploy_key \
+            /tmp/db-release.tar.gz \
+            "${{ secrets.AWS_USER }}@${{ secrets.AWS_HOST }}:/tmp/db-release.tar.gz"
+
+          echo "Database repository release uploaded successfully."
+
+      - name: Deploy on AWS
+        run: |
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -i ~/.ssh/erp_deploy_key \
+            "${{ secrets.AWS_USER }}@${{ secrets.AWS_HOST }}" \
+            "sudo -n /data/deploy/scripts/deploy-erp-db"
